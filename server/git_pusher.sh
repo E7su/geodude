@@ -1,9 +1,14 @@
 #!/bin/bash
 
-tmp_path=/tmp/zeppelin_script/latest_commit_tmsp
+ntb_path=/usr/lib/zeppelin/notebook
+tmp_path=/usr/lib/zeppelin/git_pusher/latest_commit_tmsp
+
+# go to local git repository with notebooks
+cd $ntb_path
 
 # if last commit time on disk < current last commit time, then push:
 if [ `cat $tmp_path` -lt `git log -n1 --format="%at"` ]; then
+  pwd > /usr/lib/zeppelin/git_pusher/tmp
   git push
 
   # if push was success or nothing to push:
