@@ -97,9 +97,9 @@ copy_data_to_predprod () {
   grep 2017 | \
   awk -F '8020' {'print $2'} | \
   xargs -I {} -P 5 bash -c "echo '$(date +%F) $NAME: $TYPE\
-  -> Копирование партиции {} на кластер предпрода' \
-  && sudo -u hdfs hadoop distcp -skipcrccheck \
-  -update $master_url{} hdfs://{}"
+-> Копирование партиции {} на кластер предпрода' \
+&& sudo -u hdfs hadoop distcp -skipcrccheck \
+-update $master_url{} hdfs://{}"
 
   echo "<<< Копированиe завершено" 
   }
@@ -114,11 +114,11 @@ refresh_hive () {
   awk -F "dt=" {'print $2 '} | \
   grep 2017 | \
   xargs -I {} -P 5 bash -c "echo '$(date +%F) $NAME: $TYPE \
-  -> Добавление партиции {} в hive' \
-  && hive -e \"ALTER TABLE database_name.$table_name \
-  ADD PARTITION (dt='{}')\
-  location '/data/database_name.db/$table_name/dt={}';\" \
-  -hiveconf hive.cli.errors.ignore=true"
+-> Добавление партиции {} в hive' \
+&& hive -e \"ALTER TABLE database_name.$table_name \
+ADD PARTITION (dt='{}')\
+location '/data/database_name.db/$table_name/dt={}';\" \
+-hiveconf hive.cli.errors.ignore=true"
 
 echo "<<< Добавление партиций в hive завершено"
 }
@@ -152,9 +152,9 @@ remove_duplicates () {
 
 NAME=`basename $0`
 TYPE='<info>'
-LOG_PATH=/tmp/data_migrator.log
+LOG_DIR=/tmp/data_migrator.log
 
-echo "!!! Логи можно посмотреть в $LOG_PATH командой tail -f $LOG_PATH"
+echo "!!! Логи можно посмотреть в папке $LOG_DIR командой tail -f $LOG_DIR/название_таблицы"
 echo "Вы запустили скрипт в screen? (y/n)"
 read item
 
@@ -164,8 +164,7 @@ case "$item" in
     n|N) echo "Введён «n», завершение работы программы"
         exit 1
         ;;
-    *) echo "Ничего не введено. Выполняем действие по умолчанию\
-       - завершение программы"
+    *) echo "Ничего не введено. Выполняем действие по умолчанию - завершение программы"
         exit 1
         ;;
 esac
@@ -175,6 +174,14 @@ dialog_with_user
 clear
 
 table_name=$result
+LOG_PATH=/tmp/data_migrator/"$table_name".log
+
+# Удаление предыдущих логов по переливке данной таблицы,
+# если они существуют
+if test -f $LOG_PATH;
+then
+  rm $LOG_PATH
+fi
 
 echo $(date +%F) $NAME: $TYPE " \
 -> Название таблицы: "$table_name &>> $LOG_PATH
@@ -196,8 +203,8 @@ else
   if [ $table_name == name3 ] ; then
     cat ./dt | \
     xargs -I {} bash -c "echo '$(date +%F) $NAME: $TYPE \
-    -> Добавление партиции {} в таблицу name3 ' \
-    && ./add_partition_for_name3.py {}" &>> $LOG_PATH
+-> Добавление партиции {} в таблицу name3 ' \
+&& ./add_partition_for_name3.py {}" &>> $LOG_PATH
   fi
 
 fi
