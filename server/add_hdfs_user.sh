@@ -11,7 +11,11 @@ echo "useradd $login -c \"$comment\" -m -b /team -g hdfs -N"
 hadoop fs –mkdir /user/$login
 echo "hadoop fs –mkdir /user/$login"
 
-# chown
+# chown && chmod
 sudo su hdfs
-hadoop fs –chown –R $login:hdfs /team/$login
-echo "hadoop fs –chown –R $login:hdfs /team/$login"
+
+hadoop fs –chown –R $login:hdfs /team/$login && \
+hadoop fs -chmod -R g+w /team/$login/
+
+echo "hadoop fs –chown –R $login:hdfs /team/$login && \
+hadoop fs -chmod -R g+w /team/$login/"
