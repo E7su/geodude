@@ -238,7 +238,7 @@ refresh_miscellaneous () {
   "echo '$(date +%F) $NAME: $TYPE \
 -> Добавление таблицы {} ' \
 &&  hadoop distcp -skipcrccheck \
--update $master_url{}/* hdfs://{}/"
+-update $master_url{}/* {}/"
 }
 
 
