@@ -152,7 +152,7 @@ copy_data_to_predprod () {
   xargs -I {} -P 5 bash -c "echo '$(date +%F) $NAME: $TYPE\
 -> Копирование партиции {} на кластер предпрода' \
 && sudo -u hdfs hadoop distcp -skipcrccheck \
--update $master_url{} hdfs://{}"
+-update $master_url{} /{}"
 
   echo "<<< Копированиe завершено" 
 }
@@ -163,14 +163,14 @@ copy_data_to_predprod () {
 refresh_hive () {
   echo ">>> Добавление партиций в hive"
 
-  hadoop fs -ls $table_url | \
+  hadoop fs -ls $table_path | \
   awk -F "dt=" {'print $2 '} | \
   grep 2017 | \
   xargs -I {} -P 5 bash -c "echo '$(date +%F) $NAME: $TYPE \
 -> Добавление партиции {} в hive' \
 && hive -e \"ALTER TABLE groot.$table_name \
 ADD PARTITION (dt='{}')\
-location $table_name/dt={};\" \
+location '$table_path/dt={}';\" \
 -hiveconf hive.cli.errors.ignore=true"
 
 echo "<<< Добавление партиций в hive завершено"
