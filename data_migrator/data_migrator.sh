@@ -229,16 +229,71 @@ name3_to_hive () {
   echo "<<< Добавление партиций в hive завершено"
 }
 
+# --/ Обновление неинкрементальных таблиц
+#                          из /data/path /--------------------
+#
+#     Список таблиц содержится в файле list_fixed
+refresh_fixed_miscellaneous () {
+  echo ">>> Обновление неинкрементальных таблиц, лежащих в /data/path"
 
-# --/ Обновление неинкрементальных таблиц /---------------------
-#     Список таблиц содержится в файле list_for_copy
-refresh_miscellaneous () {
-  cat ./list_for_copy | \
+  cat ./list_fixed | \
   xargs -I {} -P 60 bash -c \
   "echo '$(date +%F) $NAME: $TYPE \
 -> Добавление таблицы {} ' \
 &&  hadoop distcp -skipcrccheck \
 -update $master_url{}/* {}/"
+
+  echo "<<< Обновление неинкрементальных таблиц, лежащих в /data/path завершено"
+}
+
+
+# --/ Обновление неинкрементальных таблиц
+#                          из /etl/path /---------------------
+#
+#     Список таблиц содержится в файле list_prefix
+refresh_prefix_miscellaneous () {
+  echo ">>> Обновление неинкрементальных таблиц, лежащих в /etl/path"
+
+  # Достаёт самую актуальную таблицу (название включает в себя дату последнего обновления)
+  get_table_name_for_misc
+
+  cat ./tmp | \
+  xargs -I {} -P 60 bash -c \
+"echo '$(date +%F) $NAME: $TYPE \
+-> Добавление таблицы {} ' \
+&& hadoop distcp -skipcrccheck \
+-update $master_url{}/* {}/"
+
+  echo "<<< Обновление неинкрементальных таблиц, лежащих в /etl/path завершено"
+}
+
+# --/ Получение актуальных названий таблиц
+#                             из /etl/path /-----------------
+get_table_name_for_misc() {
+  echo ">>> Получение актуальных названий таблиц из /etl/path"  
+
+  tmp_file_autodelete  # удаление неактуальных названий
+
+  cat ./list_path | \
+  xargs -I {} -P 60 bash -c \
+  "hadoop fs -ls hdfs://hadoop-prod/etl/path/ | \
+grep {} | \
+awk {'print \$8'} | \
+awk -F 'prod' {'print \$2'} | \
+tail -n 1 >> tmp"  # запись самой новой версии таблицы во временный файл
+
+  echo "<<< Получение актуальных названий таблиц из /etl/path завершено"
+}
+
+
+# --/ Удаление старого временного файла 
+#                          с неактуальными названиями таблиц /--
+#     Если он существует
+tmp_file_autodelete() {
+  if test -f tmp;
+  then
+    rm tmp
+  fi
 }
 
 
@@ -272,7 +327,8 @@ else
     refresh_name3 &>> $LOG_PATH
     name3_to_hive &>> $LOG_PATH
   elif [ $table_name == miscellaneous ] ; then
-    refresh_miscellaneous &>> $LOG_PATH
+    refresh_fixed_miscellaneous &>> $LOG_PATH
+    refresh_prefix_miscellaneous &>> $LOG_PATH
   fi
 
 fi
