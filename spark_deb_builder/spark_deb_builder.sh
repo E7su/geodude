@@ -29,7 +29,7 @@ clone_and_checkout () {
 
 # --/ Сборка под Hadoop 2.6 /-----------------------------------
 build_for_hadoop () {
-./build/mvn -Pyarn -Phive -Phive-thriftserver -DskipTests clean package
+  ./build/mvn -Pyarn -Phive -Phive-thriftserver -DskipTests clean package
 }
 
 
@@ -180,24 +180,10 @@ create_source_format () {
 }
 
 
-# --/ Создание скрипта для сборки деб-пакета /------------------
-create_script_for_build_deb () {
-  cd ../../../
-
-  echo "#!/bin/bash
-cd ./pack_source
-tar -cz ./* -f ../spark2_$MINOR_VERSION.orig.tar.gz
-debuild -us -uc
-" > build_me
-
-  chmod +x build_me
-}
-
-
 # --/ Копирование и распаковка архивов библиотек /--------------
 copy_spark_and_libs () {
   # создание папок для библиотек
-  cd ..
+  cd ../../../..
   mkdir -p $USR_PATH
   cd $USR_PATH
   mkdir -p python3/dist-packages
@@ -216,8 +202,9 @@ copy_spark_and_libs () {
 
 # --/ Запуск сборки деб-пакета /--------------------------------
 build () {
-  cd $HOME_PACKAGE/spark2
-  ./build_me
+  cd $HOME_PACKAGE/spark2/pack_source
+  tar -cz ./* -f ../spark2_$MINOR_VERSION.orig.tar.gz
+  debuild -us -uc
 }
 
 
@@ -226,6 +213,5 @@ build () {
 clone_and_checkout
 build_for_hadoop
 prepare_template_for_deb_package
-create_script_for_build_deb
 copy_spark_and_libs
 build
