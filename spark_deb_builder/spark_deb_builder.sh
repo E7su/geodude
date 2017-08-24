@@ -10,29 +10,52 @@ set -e
 PACKAGE_PWD=`pwd`
 DEBIAN_PATH=$PACKAGE_PWD"/spark2/pack_source/debian"
 USR_PATH=$PACKAGE_PWD"/spark2/pack_source/usr/lib"
-
+VERSION=$1
+CHOICE=$2
 
 # ОПИСАНИЕ ФУНКЦИЙ =============================================
 
-# --/ Диалог с пользователем /----------------------------------
-dialog_with_user () {
-  dialog_version
-  dialog_blas
+# --/ Вызов диалога, если аргументы не введены /----------------
+get_params () {
+  get_version
+  get_blas
+}
+
+# --/ Проверка на непустую версию /-----------------------------
+get_version () {
+  if [[ -z $VERSION ]]; then
+    dialog_version
+  fi
 }
 
 
-# --/ Диалог о собираемой версии Spark/-------------------------
+# --/ Обработка введённого пакета BLAS /------------------------
+get_blas () {
+  if [[ -z $CHOICE ]]; then
+    dialog_blas
+  elif [[ $CHOICE == MLLib || $CHOICE == mllib ]]
+  then
+    CHOICE="MLLib"
+  else
+    echo "Неверен второй аргумент. Аргумент должен отсутствовать или быть равным MLLib"
+    exit 1
+  fi
+}
+
+
+# --/ Диалог о собираемой версии Spark /-------------------------
 dialog_version () {
   DIALOG=${DIALOG=dialog}
   tempfile=`tempfile 2>/dev/null` || tempfile=/tmp/test$$
   trap "rm -f $tempfile" 0 1 2 5 15
 
   $DIALOG --title "Ввод версии Spark" --clear \
-          --inputbox "Введите версию Spark для сборки deb-пакета, начиная с буквы \n\nПример:  v2.0.2" 16 51 2> $tempfile
+          --inputbox "Введите версию Spark для сборки deb-пакета, начиная с буквы \
+                                            \n\nПример:  v2.0.2" 16 51 2> $tempfile
 
-  retval=$?
+  RETVAL=$?
 
-  case $retval in
+  case $RETVAL in
     0)
       echo "Вы ввели `cat $tempfile`"
       ;;
@@ -40,17 +63,17 @@ dialog_version () {
       echo "Отказ от ввода.";;
     255)
       if test -s $tempfile ; then
-        cat $tempfile
+        echo "Версия не введена"
+        exit 255
       else
         echo "Нажата клавиша ESC."
+        exit 1
       fi
       ;;
   esac
 
   # введённая пользователем версия, например, v2.0.2
   VERSION=`cat $tempfile`
-  # минорная версия (последние две цифры), из примера - 0.2
-  MINOR_VERSION=`echo $VERSION | cut -c 4-`
 }
 
 
@@ -65,18 +88,40 @@ dialog_blas () {
           "BLAS"  "Use Default BLAS" \
           "MLLib" "Install MLLib" 2> $tempfile
 
-  retval=$?
+  RETVAL=$?
 
-  choice=`cat $tempfile`
+  CHOICE=`cat $tempfile`
 
-  case $retval in
+  case $RETVAL in
     0)
-      echo "Да вы эстет! $choice -- это лучшее, что вы собирали в своей жизни!";;
+      echo "Да вы эстет! $CHOICE -- это лучшее, что вы собирали в своей жизни!";;
     1)
       echo "Отказ от ввода.";;
     255)
       echo "Нажата клавиша ESC.";;
   esac
+}
+
+
+# --/ Удаление существующих папок spark2 и spark_original /-----
+remove_previos_spark_dirs () {
+  echo ">>> Удаление папок предыдущей сборки spark"
+	
+  if [ -d $PACKAGE_PWD/spark2 ]; then
+    rm -rf $PACKAGE_PWD/spark2
+    echo ">>> Удалена папка spark2"
+  else
+    echo '<<< Предыдущие сборки spark не обнаружены '
+  fi
+
+  if [ -d $PACKAGE_PWD/spark_original ]; then
+    rm -rf $PACKAGE_PWD/spark_original
+    echo ">>> Удалена папка spark_original"
+  else
+    echo ">>> Предыдущая папка с исходниками spark не обнаружена"
+  fi
+
+  echo "<<< Удаление папок предыдущей сборки spark завершено"
 }
 
 
@@ -92,8 +137,17 @@ clone_and_checkout () {
   # смотрим релизные теги
   git tag
 
+  if [[ -z $VERSION ]] ; then
+    VERSION=`git tag | tail -n 1`
+    echo "<<< Версия не введена, будет собрана последняя стабильная $VERSION"
+  fi
+
   echo ">>> Выбрана версия $VERSION для создания пакета"
   git checkout $VERSION
+
+  # минорная версия (последние две цифры), из примера - 0.2
+  MINOR_VERSION=`echo $VERSION | cut -c 4-`
+
   echo "<<< Открыты исходные коды версии $VERSION"
 }
 
@@ -102,7 +156,7 @@ clone_and_checkout () {
 build_for_hadoop () {
   echo ">>> Сборка tar Spark $VERSION для Hadoop 2.6"
 
-  if [ $choice == MLLib ] ; then
+  if [ $CHOICE == MLLib ] ; then
     FLAG="-Pnetlib-lgpl"
     echo "Добавлен флаг $FLAG"
   fi
@@ -192,7 +246,7 @@ Priority: extra
 Maintainer: Etsu <etsu4296@gmail.com>
 Build-Depends: debhelper (>= 7.0.50~)
 Standards-Version: 3.9.1
-Homepage: http://www.ivi.ru
+Homepage: https://github.com/E7su
 Vcs-Git:
 Vcs-Browser:
 
@@ -350,7 +404,8 @@ build () {
 
 
 # MAIN =========================================================
-dialog_with_user
+get_params
+remove_previos_spark_dirs
 clone_and_checkout
 build_for_hadoop
 prepare_template_for_deb_package
