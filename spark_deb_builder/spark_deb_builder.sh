@@ -15,7 +15,7 @@ CHOICE=$2
 
 # ОПИСАНИЕ ФУНКЦИЙ =============================================
 
-# --/ Вызов диалога, если аргументы не введены /----------------
+# --/ Получение параметров /------------------------------------
 get_params () {
   get_version
   get_blas
@@ -33,11 +33,14 @@ get_version () {
 get_blas () {
   if [[ -z $CHOICE ]]; then
     dialog_blas
+  elif [[ $CHOICE == default ]]
+  then
+    CHOICE=""
   elif [[ $CHOICE == MLLib || $CHOICE == mllib ]]
   then
     CHOICE="MLLib"
   else
-    echo "Неверен второй аргумент. Аргумент должен отсутствовать или быть равным MLLib"
+    echo "Неверен второй аргумент. Аргумент может иметь значение MLLib или default"
     exit 1
   fi
 }
