@@ -21,6 +21,7 @@ get_params () {
   get_blas
 }
 
+
 # --/ Проверка на непустую версию /-----------------------------
 get_version () {
   if [[ -z $VERSION ]]; then
@@ -74,7 +75,7 @@ dialog_version () {
       fi
       ;;
   esac
-
+  
   # введённая пользователем версия, например, v2.0.2
   VERSION=`cat $tempfile`
 }
@@ -95,6 +96,7 @@ dialog_blas () {
 
   CHOICE=`cat $tempfile`
 
+  clear
   case $RETVAL in
     0)
       echo "Да вы эстет! $CHOICE -- это лучшее, что вы собирали в своей жизни!";;
@@ -106,34 +108,38 @@ dialog_blas () {
 }
 
 
-# --/ Удаление существующих папок spark2 и spark_original /-----
-remove_previos_spark_dirs () {
-  echo ">>> Удаление папок предыдущей сборки spark"
-	
+# --/ Удаление папки spark2, оставшейся от предыдущей сборки /--
+remove_spark2_directory () {
   if [ -d $PACKAGE_PWD/spark2 ]; then
     rm -rf $PACKAGE_PWD/spark2
-    echo ">>> Удалена папка spark2"
+    echo "<<< Удалена папка spark2"
   else
-    echo '<<< Предыдущие сборки spark не обнаружены '
+    echo "<<< Папка spark2 не обнаружена"
   fi
-
-  if [ -d $PACKAGE_PWD/spark_original ]; then
-    rm -rf $PACKAGE_PWD/spark_original
-    echo ">>> Удалена папка spark_original"
-  else
-    echo ">>> Предыдущая папка с исходниками spark не обнаружена"
-  fi
-
-  echo "<<< Удаление папок предыдущей сборки spark завершено"
 }
 
 
-# --/ Клонирование исходников и выбор версии /------------------
-clone_and_checkout () {
+# --/ Удаление предыдущей папки spark_original с исходниками /--
+remove_spark_original_directory () {
+  if [ -d $PACKAGE_PWD/spark_original ]; then
+    rm -rf $PACKAGE_PWD/spark_original
+    echo "<<< Удалена папка spark_original"
+  else
+    echo "<<< Предыдущая папка spark_original не обнаружена"
+  fi
+}
+
+
+# --/ Клонирование исходников /---------------------------------
+clone_source () {
   echo ">>> Клонирование исходников"
   git clone https://github.com/apache/spark.git spark_original
   echo "<<< Клонирование исходников завершено"
+}
 
+
+# --/ Выбор собираемой версии Spark /---------------------------
+get_version_from_source () {
   # заходим в папку с репозиторием
   cd $PACKAGE_PWD/spark_original
   echo ">>> Список найденных тегов"
@@ -190,6 +196,7 @@ prepare_template_for_deb_package () {
   create_postinst
   create_postrm
   create_rules
+  create_spark2_install
 
   echo ">>> Добавление битов на исполнение для скриптов сборки"
   chmod +x postinst
@@ -352,6 +359,19 @@ create_rules () {
 }
 
 
+# --/ Создание файла spark2.install /---------------------
+create_spark2_install () {
+  echo ">>> Создание файла spark2.install"
+
+  echo 'usr/lib/python3/dist-packages/py4j /usr/lib/python3/dist-packages/
+usr/lib/python3/dist-packages/pyspark /usr/lib/python3/dist-packages/
+usr/lib/spark2 /usr/lib/' > spark2.install
+
+  echo "<<< Создание файла spark2.install завершено"
+  cat spark2.install
+}
+
+
 # --/ Создание папки source и файла format /--------------------
 create_source_format () {
   echo ">>> Создание папки source и файла format"
@@ -369,14 +389,11 @@ create_source_format () {
 # --/ Копирование и распаковка архивов библиотек /--------------
 copy_spark_and_libs () {
   echo ">>> Cоздание папок для библиотек"
-
   mkdir -p $USR_PATH
   cd $USR_PATH
   mkdir -p $USR_PATH/python3/dist-packages
   mkdir $USR_PATH/spark2
-
-  echo "<<< Cоздание папок для библиотек"
-
+  echo "<<< Cоздание папок для библиотек завершено"
 
   echo ">>> Копирование собранного maven'ом проекта в директорию для deb-пакета"
   cp -r $PACKAGE_PWD/spark_original/* spark2/
@@ -390,6 +407,50 @@ copy_spark_and_libs () {
   echo ">>> Распаковка и удаление zip файлов"
   find *.zip |  xargs -I {} bash -c "unzip {} && rm {}"
   echo "<<< Zip файлы распакованы"
+
+  echo ">>> Получение названия архива py4j для записи в конфиг"
+  PY4J_VERSION=`find /usr/lib/spark2/python/lib/py4j*.zip -type f -printf "%f\n"`
+  echo "<<< Название получено: $PY4J_VERSION"
+
+  chmod_libs
+}
+
+
+# --/ Добавление прав на исполнение в скрипты libs /------------
+chmod_libs () {
+  echo ">>> Добавление прав на исполнение в скрипты библиотек"
+  chmod g+w -R *
+  chmod +x -R *
+
+  DIST_PACKAGES=`pwd`
+  cd $DIST_PACKAGES/pyspark
+  chmod +x find_spark_home.py
+
+  cd $DIST_PACKAGES/py4j
+  chmod +x *
+  echo "<<< Добавление прав на исполнение в скрипты библиотек завершено"
+}
+
+
+# --/ Создание файла с дефолтной конфигурацией spark /----------
+create_conf_spark-defaults_conf () {
+  echo ">>> Создание файла conf/spark-defaults.conf"
+
+  cd $USR_PATH/spark2/conf
+  echo "spark.pyspark.python                      python3
+spark.pyspark.driver.python               python3
+spark.executorEnv.PYSPARK_PYTHON          python3
+spark.executorEnv.PYSPARK_DRIVER_PYTHON   python3
+
+spark.executorEnv.PYTHONPATH              \$SPARK_HOME/python/lib/$PY4J_VERSION:\$SPARK_HOME/python/lib/pyspark.zip:\$SPARK_HOME/python/:
+
+spark.sql.catalogImplementation           hive
+spark.sql.orc.filterPushdown              true
+spark.ui.enabled                          true
+" > spark-defaults.conf
+ 
+  echo "<<< Создание файла conf/spark-defaults.conf завершено"
+  cat spark-defaults.conf
 }
 
 
@@ -407,10 +468,34 @@ build () {
 
 
 # MAIN =========================================================
+# Вызов диалогов для получения версии Spark и выбора пакета BLAS
 get_params
-remove_previos_spark_dirs
-clone_and_checkout
-build_for_hadoop
+
+# Для пересборки Spark:
+remove_spark2_directory
+
+# Для скачивания исходников (можно закомментировать, если исходники уже есть):
+remove_spark_original_directory  #
+clone_source  #
+
+# Получение версии Spark для дальнейшей сборки
+get_version_from_source
+
+# Для сборки tar maven'ом, а также для пересборки tar с другой версией BLAS
+# (можно не перезапускать, если сборка нужна той же версии и с тем же флагом,
+# но обычно такое никому не надо :] )
+build_for_hadoop  #
+
+# Подготовка файлов для создания deb-пакета
 prepare_template_for_deb_package
+
+# Копирование и распаковка библиотек для Spark
 copy_spark_and_libs
+
+# Создание конфига spark-defaults.conf
+# (можно закомментировать, если нужен Spark без хардкода,
+# т.е. получится Spark, как если бы его просто скачали с официального сайта)
+create_conf_spark-defaults_conf  # optional function
+
+# Сборка deb-пакета
 build
