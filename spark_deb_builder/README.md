@@ -47,12 +47,45 @@ sudo apt-get install dialog
 sudo dpkg -i spark_что-то_там_all.deb
 ```
 
+
 ### "Особенности" скрипта:
 * После работы скрипт оставляет две папочки:
   * spark2 - папочка, из которой как раз и собирается deb-пакет (содержит всякие файлики для сборки)
   * spark_original - папочка с исходниками спарка (она никак не изменяется во время работы скрипта, ~~можно без проблем прямо в ней что-то накодить и закоммитить в github для apache~~ :joy_cat:)
 
 * Соответственно, если заново запустить скрипт, он все эти папочки и уже собранные deb-пакеты сотрёт ~~насовсем~~.
-Дабы не потерять, надо сохранить. Если кому-то нужно чтобы он так не делал - напишите на почту, пофиксю :)
+Дабы не потерять, надо сохранить. Если эта особенность критична, могу пофиксить
 
 * Если номер версии не указан, то скрипт соберёт самую последнюю из релизных тегов
+
+* Можно закомментировать следующие функции, чтобы не скачивать заново исходники, если мы уже один раз запускали наш скрипт
+```
+# remove_spark_original_directory  
+# clone_source
+```
+
+* Вообще, можно закомментировать все функции, отмеченные решёточкой справа.
+Например, build_for_hadoop собирает tar'ник maven'ом с определёнными флагами и, соответственно, если флаги и номер версии не менялись с момента последней сборки tar'ника и tar'ник никто не удалял, то можно ~спокойно~ обойтись без данной функции
+```
+# build_for_hadoop  # 
+```
+
+* Функция create_conf_spark-defaults_conf создаёт конфиг со стандартными настройками. В случае, если они не нужны в стандартном пакете, функцию также можно закомментировать:
+```
+# create_conf_spark-defaults_conf
+``` 
+Сам конфиг:
+spark-defaults.conf
+```
+spark.pyspark.python                      python3
+spark.pyspark.driver.python               python3
+spark.executorEnv.PYSPARK_PYTHON          python3
+spark.executorEnv.PYSPARK_DRIVER_PYTHON   python3
+
+spark.executorEnv.PYTHONPATH              /usr/lib/spark2/python/lib/py4j-0.10.4-src.zip:/usr/lib/spark2/python/lib/pyspark.zip:/usr/lib/spark2/python/:
+
+spark.sql.catalogImplementation           hive
+spark.sql.orc.filterPushdown              true
+spark.ui.enabled                          false
+```
+Версия py4j будет определена автоматически
