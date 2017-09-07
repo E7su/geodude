@@ -8,6 +8,6 @@ if [[ -z $FIRST_PATH || -z $SECOND_PATH ]]; then
   exit 1
 fi
 
-ls -la $FIRST_PATH | \
+ls -lA $FIRST_PATH | \
 awk {'print $9'} | \
 xargs -P 15 -I {} bash -c "diff $FIRST_PATH/{}  $SECOND_PATH/{}"
