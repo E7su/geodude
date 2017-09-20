@@ -50,3 +50,16 @@ copy_other_configs () {
     echo "cp conf/hive-site.xml $HIVE_CONF_DIR/"
     cp conf/hive-site.xml $HIVE_CONF_DIR/
   fi
+  echo "<<< Копирование hive-site.xml в $HIVE_CONF_DIR"
+
+  echo ">>> Копирование yarn-site.xml и core-site.xml в $HADOOP_CONF_DIR"
+  if [ -n $HADOOP_CONF_DIR ]; then
+    echo "cp conf/yarn-site.xml $HADOOP_CONF_DIR/"
+    cp conf/yarn-site.xml $HADOOP_CONF_DIR/
+    echo "cp conf/core-site.xml $HADOOP_CONF_DIR/"
+    cp conf/core-site.xml $HADOOP_CONF_DIR/
+  fi
+  echo "<<< Копирование yarn-site.xml и core-site.xml в $HADOOP_CONF_DIR завершено"
+}
+
+update_git_repo
