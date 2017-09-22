@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ===============================================================
-#  Скрипт для автоматической пересборки spark
+#          Скрипт для автоматической пересборки spark
 # ===============================================================
 
 
@@ -20,12 +20,13 @@ update_git_repo () {
   cd $SPARK_HOME/spark-synchronizer/
 
   if [[ `git pull` != "Already up-to-date." ]]; then
-    git pull
-    echo "rebuild" > last_status #| tee > last_status
-    rebuild_new_spark #| tee &>> build_log
-    copy_other_configs #| tee &>> build_log
+    echo "rebuild" # > last_status
+    whoami > debug
+    echo `whoami` >> debug
+    rebuild_new_spark &>> build_log
+    copy_other_configs &>> build_log
   else
-    echo "pass" > last_status #| tee > last_status
+    echo "pass" > last_status
   fi
 }
 
@@ -34,7 +35,7 @@ update_git_repo () {
 rebuild_new_spark () {
   cd $SPARK_HOME/spark-deb-builder/
   # TODO: remove hardcode
-  sudo ./spark_deb_builder.sh -v v2.2.0 -b default -c local
+  ./spark_deb_builder.sh -v v2.2.0 -b default -c local
   cd $SPARK_HOME/spark-synchronizer
   update_date=`date`
   echo $update_date > last_rebuild_date
@@ -44,22 +45,23 @@ rebuild_new_spark () {
 # --/ Раскладывает конфиги hadoop и hive по папочкам /---------
 copy_other_configs () {
   cd $SPARK_HOME/spark-synchronizer
-
-  echo ">>> Копирование hive-site.xml в $HIVE_CONF_DIR"
+  
+  echo ">>> Копирование hive-site.xml"
   if [ -n $HIVE_CONF_DIR ]; then
     echo "cp conf/hive-site.xml $HIVE_CONF_DIR/"
     cp conf/hive-site.xml $HIVE_CONF_DIR/
   fi
-  echo "<<< Копирование hive-site.xml в $HIVE_CONF_DIR"
-
-  echo ">>> Копирование yarn-site.xml и core-site.xml в $HADOOP_CONF_DIR"
+  echo "<<< Копирование hive-site.xml завершено"
+  
+  echo ">>> Копирование yarn-site.xml и core-site.xml"
   if [ -n $HADOOP_CONF_DIR ]; then
     echo "cp conf/yarn-site.xml $HADOOP_CONF_DIR/"
     cp conf/yarn-site.xml $HADOOP_CONF_DIR/
     echo "cp conf/core-site.xml $HADOOP_CONF_DIR/"
     cp conf/core-site.xml $HADOOP_CONF_DIR/
   fi
-  echo "<<< Копирование yarn-site.xml и core-site.xml в $HADOOP_CONF_DIR завершено"
+  echo "<<< Копирование yarn-site.xml и core-site.xml завершено"
 }
 
 update_git_repo
+
