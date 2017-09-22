@@ -10,15 +10,58 @@ set -e
 PACKAGE_PWD=`pwd`
 DEBIAN_PATH=$PACKAGE_PWD"/spark2/pack_source/debian"
 USR_PATH=$PACKAGE_PWD"/spark2/pack_source/usr/lib"
-VERSION=$1
-CHOICE=$2
+SCRIPT_NAME=`basename $0`
 
 # ОПИСАНИЕ ФУНКЦИЙ =============================================
+
+print_help() {
+  echo "Сборка deb-пакета spark из исходников с github"
+  echo
+  echo "Использование: $SCRIPT_NAME options..."
+  echo "Параметры:"
+  echo "  -v version  Выбор версии Spark (вида v2.2.0)"
+  echo "              или current (в случае, если не нужна пересборка tar)."
+  echo "  -b blas     Выбор реализации LA (default/native)."
+  echo "  -c config   Выбор конфигов Spark (default/local)."
+  echo "  -h          Справка."
+  echo
+}
+
+
+# --/ Получение значений опций /--------------------------------
+get_options () {
+  # Если скрипт запущен без аргументов, открываем справку.
+  if [ $# == 1 ]; then
+    print_help
+  fi
+
+  while getopts ":v:b:c:" opt ;
+  do
+      case $opt in
+          v) VERSION=$OPTARG;
+              echo "Version:              $VERSION"
+              ;;
+          b) BLAS=$OPTARG;
+              echo "BLAS Implementation:  $BLAS"
+              ;;
+          c) CONFIG=$OPTARG;
+              echo "Config:               $CONFIG" 
+              ;;
+          *) echo "Неправильный параметр";
+              echo "Для вызова справки запустите $SCRIPT_NAME -h";
+              exit 1
+              ;;
+          esac
+  done
+get_version
+}
+
 
 # --/ Получение параметров /------------------------------------
 get_params () {
   get_version
   get_blas
+  get_config
 }
 
 
@@ -26,22 +69,39 @@ get_params () {
 get_version () {
   if [[ -z $VERSION ]]; then
     dialog_version
+  elif [[ $VERSION == current ]] 
+  then
+    cd $PACKAGE_PWD/spark_original
+    VERSION=`git status | awk {'print $4'} | head -n 1`
+    REBUILD="false"
   fi
 }
 
 
-# --/ Обработка введённого пакета BLAS /------------------------
+# --/ Обработка выбора введённой имплементации BLAS /-----------
 get_blas () {
-  if [[ -z $CHOICE ]]; then
+  if [[ -z $BLAS ]]; then
     dialog_blas
-  elif [[ $CHOICE == default ]]
+  elif [[ $BLAS == default ]]
   then
-    CHOICE=""
-  elif [[ $CHOICE == MLLib || $CHOICE == mllib ]]
+    BLAS=""
+  elif [[ $BLAS != native ]]
   then
-    CHOICE="MLLib"
-  else
-    echo "Неверен второй аргумент. Аргумент может иметь значение MLLib или default"
+    echo "Неверен аргумент опции -b. Аргумент может иметь значение native или default"
+    echo "Введено значение $BLAS"
+    exit 1
+  fi
+}
+
+
+# --/ Обработка выбора введённой версии конфигов /--------------
+get_config () {
+  if [[ -z $CONFIG ]]; then
+    dialog_config
+  elif [ $CONFIG != local ] && [ $CONFIG != default ]
+  then
+    echo "Неверен аргумент опции -c. Аргумент может иметь значение local или default"
+    echo "Введено значение $CONFIG"
     exit 1
   fi
 }
@@ -88,18 +148,18 @@ dialog_blas () {
   trap "rm -f $tempfile" 0 1 2 5 15
 
   $DIALOG --clear --title "Выбор BLAS" \
-          --menu "Оставить BLAS по умолчанию или добавить MLLib:" 20 51 4 \
-          "BLAS"  "Use Default BLAS" \
-          "MLLib" "Install MLLib" 2> $tempfile
+          --menu "Оставить BLAS по умолчанию или добавить Native BLAS:" 20 51 4 \
+          "Default"  "Use Default BLAS" \
+          "Native" "Install Native BLAS" 2> $tempfile
 
   RETVAL=$?
 
-  CHOICE=`cat $tempfile`
+  BLAS=`cat $tempfile`
 
   clear
   case $RETVAL in
     0)
-      echo "Да вы эстет! $CHOICE -- это лучшее, что вы собирали в своей жизни!";;
+      echo "Да вы эстет! $BLAS -- это лучшее, что вы собирали в своей жизни!";;
     1)
       echo "Отказ от ввода.";;
     255)
@@ -108,9 +168,47 @@ dialog_blas () {
 }
 
 
+# --/ Диалог о config/--------------------------------------------
+dialog_config () {
+  DIALOG=${DIALOG=dialog}
+  tempfile=`mktemp 2>/dev/null` || tempfile=/tmp/test$$
+  trap "rm -f $tempfile" 0 1 2 5 15
+
+  $DIALOG --clear --title "Выбор конфигов" \
+          --menu "Оставить конфиги по умолчанию или добавить локальные конфиги:" 20 51 4 \
+          "Default"  "Use default configs" \
+          "Local" "Add local configs" 2> $tempfile
+
+  RETVAL=$?
+
+  CONFIG=`cat $tempfile`
+
+  clear
+  case $RETVAL in
+    0)
+      echo "Выбраны $CONFIG конфиги";;
+    1)
+      echo "Отказ от ввода.";;
+    255)
+      echo "Нажата клавиша ESC.";;
+  esac
+}
+
+# --/ Приведение значений параметров к нижнему регистру /-------
+lower_params () {
+  CONFIG=`echo $CONFIG | tr '[A-Z]' '[a-z]'`
+  BLAS=`echo $BLAS | tr '[A-Z]' '[a-z]'`
+
+  echo "Config: $CONFIG"
+  echo "BLAS: $BLAS"
+}
+
+
 # --/ Удаление папки spark2, оставшейся от предыдущей сборки /--
 remove_spark2_directory () {
   if [ -d $PACKAGE_PWD/spark2 ]; then
+    cd $PACKAGE_PWD/spark2/
+    PREVIOUS_VERSION=`find *.deb | awk -F "spark" {'print $2'} | cut -c -5`
     rm -rf $PACKAGE_PWD/spark2
     echo "<<< Удалена папка spark2"
   else
@@ -130,10 +228,24 @@ remove_spark_original_directory () {
 }
 
 
+# --/ Удаление предыдущей папки spark_synchronizer 
+#                              с предыдущей версией конфигов /--
+remove_spark_synchronizer_directory () {
+  if [ -d $PACKAGE_PWD/spark-synchronizer ]; then
+    rm -rf $PACKAGE_PWD/spark-synchronizer
+    echo "<<< Удалена папка spark-synchronizer"
+  else
+    echo "<<< Предыдущая папка spark-synchronizer не обнаружена"
+  fi
+}
+
+
 # --/ Клонирование исходников /---------------------------------
 clone_source () {
+  cd $PACKAGE_PWD
   echo ">>> Клонирование исходников"
-  git clone https://github.com/apache/spark.git spark_original
+  git clone https://github.com/apache/spark.git
+  mv spark spark_original
   echo "<<< Клонирование исходников завершено"
 }
 
@@ -149,6 +261,8 @@ get_version_from_source () {
   if [[ -z $VERSION ]] ; then
     VERSION=`git tag | tail -n 1`
     echo "<<< Версия не введена, будет собрана последняя стабильная $VERSION"
+  elif [[ $VERSION == current ]]; then
+    VERSION=$PREVIOUS_VERSION
   fi
 
   echo ">>> Выбрана версия $VERSION для создания пакета"
@@ -165,16 +279,25 @@ get_version_from_source () {
 build_for_hadoop () {
   echo ">>> Сборка tar Spark $VERSION для Hadoop 2.6"
 
-  if [ $CHOICE == MLLib ] ; then
+  if [ $BLAS == "native" ] ; then
     FLAG="-Pnetlib-lgpl"
     echo "Добавлен флаг $FLAG"
   fi
 
   cd $PACKAGE_PWD/spark_original
-  echo "./build/mvn -Pyarn -Phive -Phive-thriftserver -DskipTests $FLAG clean package"
-  ./build/mvn -Pyarn -Phive -Phive-thriftserver -DskipTests $FLAG clean package
+
+
+  echo './dev/make-distribution.sh --tgz --name custom-spark -Phive -Phive-thriftserver -Pyarn -DskipTests $FLAG'  
+  ./dev/make-distribution.sh --tgz --name custom-spark -Phive -Phive-thriftserver -Pyarn -DskipTests $FLAG 
+ 
+  echo "Version: $VERSION"
+  NUMBER=`echo $VERSION | cut -c 2-`
+  echo "Number: $NUMBER"
+  TGZ_NAME=`echo "spark-$NUMBER-bin-custom-spark"`
+  tar zxvf $TGZ_NAME.tgz
 
   echo "<<< Сборка tar Spark $VERSION для Hadoop 2.6 завершена"
+  echo "<<< Название tar: $TGZ_NAME"
 }
 
 
@@ -237,8 +360,7 @@ create_changelog () {
   echo "spark2 ($MINOR_VERSION-1) unstable; urgency=low
 
   * Initial package
-
- -- Etsu <etsu4296@gmail.com>  $DATE_FOR_CHANGELOG +0400
+ --   Etsu <etsu4296@gmail.com> $DATE_FOR_CHANGELOG +0400
 " > changelog
 
   echo "<<< Создание файла changelog завершено"
@@ -396,12 +518,12 @@ copy_spark_and_libs () {
   echo "<<< Cоздание папок для библиотек завершено"
 
   echo ">>> Копирование собранного maven'ом проекта в директорию для deb-пакета"
-  cp -r $PACKAGE_PWD/spark_original/* spark2/
+  cp -r $PACKAGE_PWD/spark_original/$TGZ_NAME/* spark2/
   echo "<<< Копирование собранного maven'ом проекта в директорию для deb-пакета"
 
   echo ">>> Поиск всех zip файлов с библиотеками и копирование в директорию для сборки"
   cd $USR_PATH/python3/dist-packages
-  find $PACKAGE_PWD/spark_original/python/lib/*.zip | xargs -I {} cp {} .
+  find $PACKAGE_PWD/spark_original/$TGZ_NAME/python/lib/*.zip | xargs -I {} cp {} .
   echo "<<< Копирование zip файлов в директорию для сборки завершено"
 
   echo ">>> Распаковка и удаление zip файлов"
@@ -432,8 +554,24 @@ chmod_libs () {
 }
 
 
-# --/ Создание файла с дефолтной конфигурацией spark /----------
-create_conf_spark-defaults_conf () {
+# --/ Вызов создания конфигов Spark 
+#       в зависимости от параметров, введённых пользователем /--
+create_spark_configs_according_choice () {
+  echo ">>> Вызов функций создания конфигов $CONFIG"
+
+  if [[ $CONFIG == default ]]; then
+    create_file_spark-defaults_conf
+  elif [[ $CONFIG == local ]]; then
+    remove_spark_synchronizer_directory
+    create_local_configs
+  fi
+  
+  echo "<<< Конфиги $CONFIG созданы"
+}
+
+
+# --/ Создание файла с дефолтной конфигурацией Spark /----------
+create_file_spark-defaults_conf () {
   echo ">>> Создание файла conf/spark-defaults.conf"
 
   cd $USR_PATH/spark2/conf
@@ -454,8 +592,30 @@ spark.ui.enabled                          true
 }
 
 
+# --/ Создание файлов с локальными конфигами Spark /------------
+create_local_configs () {
+  clone_predprod_configs
+  
+  cd $USR_PATH/spark2/conf/
+  echo ">>> Создание копий конфигов предпрода из папки SPARK_HOME"
+  cp $PACKAGE_PWD/spark-synchronizer/conf/* .
+  cp -r $PACKAGE_PWD/spark-synchronizer/ $USR_PATH/spark2
+  ls
+  echo "<<< Создание копий конфигов предпрода из папки SPARK_HOME завершено"
+}
+
+
+# --/ Клонирование предпродовых конфигов /----------------------
+clone_predprod_configs () {
+  echo ">>> Клонирование предпродовых конфигов"
+  cd $PACKAGE_PWD 
+  git clone #git@.../spark-synchronizer.git  # TODO add your repo name with configs
+  echo "<<< Клонирование предпродовых конфигов завершено"
+}
+
+
 # --/ Запуск сборки deb-пакета /--------------------------------
-build () {
+build_deb_package () {
   echo ">>> Запуск сборки deb-пакета"
   
   cd $PACKAGE_PWD/spark2/pack_source
@@ -468,34 +628,44 @@ build () {
 
 
 # MAIN =========================================================
-# Вызов диалогов для получения версии Spark и выбора пакета BLAS
-get_params
+main () {
+  # Обработка введённых ключей
+  get_options "$@"
 
-# Для пересборки Spark:
-remove_spark2_directory
+  # Обработка пустых значений
+  get_params
+  lower_params 
 
-# Для скачивания исходников (можно закомментировать, если исходники уже есть):
-remove_spark_original_directory  #
-clone_source  #
+  # Для пересборки Spark:
+  remove_spark2_directory
+ 
+  if [[ $REBUILD == "" ]]; then
+    # Для скачивания исходников (можно закомментировать, если исходники уже есть):
+    remove_spark_original_directory
+    clone_source
+  fi
 
-# Получение версии Spark для дальнейшей сборки
-get_version_from_source
+  # Получение версии Spark для дальнейшей сборки
+  get_version_from_source
 
-# Для сборки tar maven'ом, а также для пересборки tar с другой версией BLAS
-# (можно не перезапускать, если сборка нужна той же версии и с тем же флагом,
-# но обычно такое никому не надо :] )
-build_for_hadoop  #
+  if [[ $REBUILD == "" ]]; then
+    # Для сборки tar maven'ом, а также для пересборки tar с другой версией BLAS
+    # (можно не перезапускать, если сборка нужна той же версии и с тем же флагом,
+    # но обычно такое никому не надо :] )
+    build_for_hadoop 
+  fi
 
-# Подготовка файлов для создания deb-пакета
-prepare_template_for_deb_package
+  # Подготовка файлов для создания deb-пакета
+  prepare_template_for_deb_package
 
-# Копирование и распаковка библиотек для Spark
-copy_spark_and_libs
+  # Копирование и распаковка библиотек для Spark
+  copy_spark_and_libs
 
-# Создание конфига spark-defaults.conf
-# (можно закомментировать, если нужен Spark без хардкода,
-# т.е. получится Spark, как если бы его просто скачали с официального сайта)
-create_conf_spark-defaults_conf  # optional function
+  # Создание конфигов Spark в соответствии с выбором
+  create_spark_configs_according_choice
+  
+  # Сборка deb-пакета
+  build_deb_package
+}
 
-# Сборка deb-пакета
-build
+main "$@"
